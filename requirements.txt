@@ -1,0 +1,8 @@
+# PDF相似度检测系统 - Python依赖包
+
+# PDF处理
+pdfplumber>=0.7.0
+Pillow>=8.0.0
+
+# 数据处理
+numpy>=1.20.0

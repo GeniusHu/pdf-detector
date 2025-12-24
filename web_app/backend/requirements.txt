@@ -1,0 +1,26 @@
+# PDF Similarity Detection System - Backend Dependencies
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# PDF Processing
+pdfplumber>=0.7.0
+Pillow>=8.0.0
+
+# Data Validation
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# WebSockets
+websockets>=12.0
+
+# CORS
+python-jose[cryptography]>=3.3.0  # For JWT (future use)
+
+# Logging
+python-json-logger>=2.0.7
+
+# Utilities
+aiofiles>=23.0.0

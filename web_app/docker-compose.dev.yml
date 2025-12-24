@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # Backend API Service (Development)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pdf-similarity-backend-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - HOST=0.0.0.0
+      - PORT=8000
+      - RELOAD=true
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - MAX_FILE_SIZE=104857600  # 100MB
+      - MAX_SEQUENCES=5000
+      - MIN_SIMILARITY=0.75
+      - PROCESSING_MODE=fast
+      - MAX_PROCESSES=4
+      - CONTEXT_CHARS=100
+      - LOG_LEVEL=DEBUG
+      - LOG_FILE=logs/app.log
+    volumes:
+      - ./backend:/app
+      - ./uploads:/app/uploads
+      - ./exports:/app/exports
+      - ./logs:/app/logs
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+    networks:
+      - pdf-similarity-network
+
+  # Frontend Web Service (Development)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: base
+    container_name: pdf-similarity-frontend-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - pdf-similarity-network
+
+  # Redis Cache (Development)
+  redis:
+    image: redis:7-alpine
+    container_name: pdf-similarity-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    networks:
+      - pdf-similarity-network
+
+volumes:
+  redis_dev_data:
+    driver: local
+
+networks:
+  pdf-similarity-network:
+    driver: bridge
