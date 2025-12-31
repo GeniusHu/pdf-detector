@@ -4,7 +4,7 @@ import { FileText, BarChart3, Settings, Zap, Shield, ArrowRight } from 'lucide-r
 import FileUploadZone from '@/components/FileUpload';
 import ProcessingStatus from '@/components/ProcessingStatus';
 import SimilarityResults from '@/components/SimilarityResults';
-import { FileUpload, TaskStatus, SimilarityResult, ProcessingMode, ContentFilter, ExportFormat } from '@/types';
+import { FileUpload, TaskStatus, SimilarityResult, ProcessingMode, ContentFilter, ExportFormat, TaskStatusType } from '@/types';
 import { uploadPdf, startComparison, getTaskStatus, getTaskResult } from '@/api';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -18,9 +18,10 @@ const HomePage: React.FC = () => {
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Processing options
-  const [processingMode, setProcessingMode] = useState<ProcessingMode>(ProcessingMode.FAST);
+  const [processingMode, setProcessingMode] = useState<ProcessingMode>(ProcessingMode.STANDARD);
   const [contentFilter, setContentFilter] = useState<ContentFilter>(ContentFilter.MAIN_CONTENT_ONLY);
-  const [similarityThreshold, setSimilarityThreshold] = useState(0.75);
+  const [similarityThreshold, setSimilarityThreshold] = useState(0.90);
+  const [sequenceLength, setSequenceLength] = useState(8);
   const [exportFormat, setExportFormat] = useState<ExportFormat>(ExportFormat.JSON);
 
   const handleFilesChange = (newFiles: FileUpload[]) => {
@@ -79,6 +80,7 @@ const HomePage: React.FC = () => {
         pdf1Path: files[0].filePath!,
         pdf2Path: files[1].filePath!,
         similarityThreshold,
+        sequenceLength,
         contentFilter,
         processingMode,
         maxSequences: processingMode === ProcessingMode.ULTRA_FAST ? 2000 : 5000,
@@ -91,7 +93,7 @@ const HomePage: React.FC = () => {
       // Set initial task status
       setCurrentTask({
         taskId: response.taskId,
-        status: 'processing',
+        status: TaskStatusType.PROCESSING,
         progress: 0,
         startedAt: new Date().toISOString(),
         message: 'Processing started...',
@@ -100,7 +102,7 @@ const HomePage: React.FC = () => {
       // Start polling
       pollingRef.current = setInterval(() => {
         pollTaskStatus(response.taskId);
-      }, 1000); // Poll every second
+      }, 10000); // Poll every 10 seconds
 
       toast.success('Comparison started successfully');
 
@@ -300,7 +302,7 @@ const HomePage: React.FC = () => {
             >
               <h3 className="text-lg font-semibold text-secondary-900 mb-4">Processing Options</h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 {/* Processing Mode */}
                 <div>
                   <label className="block text-sm font-medium text-secondary-700 mb-2">
@@ -337,7 +339,7 @@ const HomePage: React.FC = () => {
                 {/* Similarity Threshold */}
                 <div>
                   <label className="block text-sm font-medium text-secondary-700 mb-2">
-                    Similarity Threshold: {(similarityThreshold * 100).toFixed(0)}%
+                    Similarity: {(similarityThreshold * 100).toFixed(0)}%
                   </label>
                   <input
                     type="range"
@@ -352,6 +354,30 @@ const HomePage: React.FC = () => {
                     <span>50%</span>
                     <span>100%</span>
                   </div>
+                </div>
+
+                {/* Sequence Length */}
+                <div>
+                  <label className="block text-sm font-medium text-secondary-700 mb-2">
+                    Sequence Length
+                  </label>
+                  <select
+                    value={sequenceLength}
+                    onChange={(e) => setSequenceLength(parseInt(e.target.value))}
+                    className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value={4}>4 characters</option>
+                    <option value={5}>5 characters</option>
+                    <option value={6}>6 characters</option>
+                    <option value={7}>7 characters</option>
+                    <option value={8}>8 characters</option>
+                    <option value={9}>9 characters</option>
+                    <option value={10}>10 characters</option>
+                    <option value={12}>12 characters</option>
+                    <option value={15}>15 characters</option>
+                    <option value={20}>20 characters</option>
+                  </select>
+                  <p className="text-xs text-secondary-500 mt-1">Consecutive chars for matching</p>
                 </div>
 
                 {/* Export Format */}

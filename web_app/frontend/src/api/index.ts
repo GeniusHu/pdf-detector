@@ -135,7 +135,7 @@ export const checkHealth = async (): Promise<HealthStatus> => {
     const response = await api.get(apiEndpoints.check);
     return handleResponse(response);
   } catch (error) {
-    handleError(error as AxiosError);
+    throw handleError(error as AxiosError);
   }
 };
 
@@ -161,7 +161,7 @@ export const uploadPdf = async (file: File, onUploadProgress?: (progress: number
     console.log('[API] Upload response:', response.data);
     return handleResponse(response);
   } catch (error) {
-    handleError(error as AxiosError);
+    throw handleError(error as AxiosError);
   }
 };
 
@@ -173,7 +173,7 @@ export const startComparison = async (request: ComparisonRequest): Promise<{ tas
     console.log('[API] Comparison started:', response.data);
     return handleResponse(response);
   } catch (error) {
-    handleError(error as AxiosError);
+    throw handleError(error as AxiosError);
   }
 };
 
@@ -185,7 +185,7 @@ export const getTaskStatus = async (taskId: string): Promise<TaskStatus> => {
     console.log('[API] Task status:', response.data);
     return handleResponse(response);
   } catch (error) {
-    handleError(error as AxiosError);
+    throw handleError(error as AxiosError);
   }
 };
 
@@ -197,7 +197,7 @@ export const getTaskResult = async (taskId: string): Promise<SimilarityResult> =
     console.log('[API] Task result received');
     return handleResponse(response);
   } catch (error) {
-    handleError(error as AxiosError);
+    throw handleError(error as AxiosError);
   }
 };
 
@@ -207,7 +207,7 @@ export const deleteTask = async (taskId: string): Promise<{ message: string }> =
     const response = await api.delete(apiEndpoints.deleteTask(taskId));
     return handleResponse(response);
   } catch (error) {
-    handleError(error as AxiosError);
+    throw handleError(error as AxiosError);
   }
 };
 
@@ -315,6 +315,7 @@ export const createComparisonRequest = (
   pdf2Path: string,
   options: {
     similarityThreshold?: number;
+    sequenceLength?: number;
     contentFilter?: ContentFilter;
     processingMode?: ProcessingMode;
     maxSequences?: number;
@@ -325,7 +326,8 @@ export const createComparisonRequest = (
   return {
     pdf1Path,
     pdf2Path,
-    similarityThreshold: options.similarityThreshold ?? 0.75,
+    similarityThreshold: options.similarityThreshold ?? 0.90,
+    sequenceLength: options.sequenceLength ?? 8,
     contentFilter: options.contentFilter ?? ContentFilter.MAIN_CONTENT_ONLY,
     processingMode: options.processingMode ?? ProcessingMode.FAST,
     maxSequences: options.maxSequences ?? 5000,
@@ -362,7 +364,7 @@ export const downloadExportFile = async (fileUrl: string, filename: string): Pro
 export const batchUploadPdfs = async (
   files: File[],
   onProgress?: (completed: number, total: number, currentFile: string) => void
-): Promise<Array<{ file_path: string; filename: string; file_size: number }>> => {
+): Promise<Array<{ filePath: string; filename: string; fileSize: number }>> => {
   const results = [];
 
   for (let i = 0; i < files.length; i++) {

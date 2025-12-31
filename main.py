@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 PDF相似序列检测主程序
-用于检测两个PDF文件中的相似8字序列
+用于检测两个PDF文件中的相似序列
 """
 
 import sys
@@ -94,7 +94,7 @@ def get_output_filename(pdf1_path: str, pdf2_path: str) -> str:
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(
-        description="检测两个PDF文件中的相似8字序列",
+        description="检测两个PDF文件中的相似序列",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
@@ -148,6 +148,14 @@ def main():
                        help='包含页眉页脚')
     parser.add_argument('--min-line-length', type=int, default=10,
                        help='最小行长度（默认10字符，过滤短行）')
+    parser.add_argument('--sequence-length', type=int, default=8,
+                       help='序列长度（默认8字符，可设为4-20）')
+
+    # 页码范围选项
+    parser.add_argument('--page-range1', type=str, default=None,
+                       help='文件1的页码范围，格式: 1-146 (只比对1-146页)')
+    parser.add_argument('--page-range2', type=str, default=None,
+                       help='文件2的页码范围，格式: 1-169 (只比对1-169页)')
 
     parser.add_argument('--version', action='version', version='PDF相似序列检测器 v2.1')
 
@@ -165,40 +173,77 @@ def main():
     if args.ultra_fast:
         print("⚡ 超快模式启用")
         similarity_threshold = 0.9  # 更严格的相似度
-        max_sequences = 2000       # 更少的序列数
-        print("配置: 相似度≥0.9, 最大序列数=2000")
+        # 只有用户没指定max_sequences时才覆盖
+        if max_sequences == 5000:  # 默认值
+            max_sequences = 2000
+        print(f"配置: 相似度≥{similarity_threshold}, 最大序列数={max_sequences}")
 
     elif args.fast:
         print("🚀 快速模式启用")
         similarity_threshold = 0.8  # 更严格的相似度
-        max_sequences = 5000       # 适中的序列数
+        # 只有用户没指定max_sequences时才覆盖
+        if max_sequences == 5000:  # 默认值
+            max_sequences = 5000
         print(f"配置: 相似度≥{similarity_threshold}, 最大序列数={max_sequences}")
 
-    # 创建内容过滤配置
-    content_config = TextExtractionConfig(
+    # 解析页码范围
+    def parse_page_range(range_str: str):
+        """解析页码范围字符串，如 '1-146' -> (1, 146)"""
+        if not range_str:
+            return None
+        try:
+            parts = range_str.split('-')
+            if len(parts) == 2:
+                return (int(parts[0]), int(parts[1]))
+        except:
+            pass
+        return None
+
+    page_range1 = parse_page_range(args.page_range1)
+    page_range2 = parse_page_range(args.page_range2)
+
+    # 创建内容过滤配置（两个文件分别配置）
+    content_config1 = TextExtractionConfig(
         include_references=args.include_references,
         include_footnotes=args.include_footnotes,
         include_citations=args.include_citations,
         include_page_numbers=args.include_headers,
         include_headers_footers=args.include_headers,
-        include_annotations=False,  # 暂时不支持批注提取
+        include_annotations=False,
         min_line_length=args.min_line_length,
-        remove_duplicate_lines=True
+        remove_duplicate_lines=True,
+        page_range=page_range1
     )
+
+    content_config2 = TextExtractionConfig(
+        include_references=args.include_references,
+        include_footnotes=args.include_footnotes,
+        include_citations=args.include_citations,
+        include_page_numbers=args.include_headers,
+        include_headers_footers=args.include_headers,
+        include_annotations=False,
+        min_line_length=args.min_line_length,
+        remove_duplicate_lines=True,
+        page_range=page_range2
+    )
+
+    # 使用一个通用的配置用于显示
+    content_config = content_config1
 
     # 显示欢迎信息
     print("=" * 80)
     print("PDF相似序列检测器 v2.1 - 正文内容对比版")
     print("=" * 80)
 
+    seq_len = args.sequence_length
     if args.exact:
-        print("功能: 检测两个PDF文件中完全相同的8字序列")
+        print(f"功能: 检测两个PDF文件中完全相同的{seq_len}字序列")
     elif args.ultra_fast:
-        print(f"功能: 超快模式检测相似度≥{similarity_threshold:.2f}的8字序列")
+        print(f"功能: 超快模式检测相似度≥{similarity_threshold:.2f}的{seq_len}字序列")
     elif args.fast:
-        print(f"功能: 快速模式检测相似度≥{similarity_threshold:.2f}的8字序列")
+        print(f"功能: 快速模式检测相似度≥{similarity_threshold:.2f}的{seq_len}字序列")
     else:
-        print(f"功能: 检测两个PDF文件中相似度≥{args.similarity:.2f}的8字序列")
+        print(f"功能: 检测两个PDF文件中相似度≥{args.similarity:.2f}的{seq_len}字序列")
 
     print("规则: 过滤标点符号，英文单词算一个字，中文逐字计算，数字整体算一个字")
     print("输出: 相似序列及在两个文件中的位置信息和差异说明")
@@ -238,15 +283,16 @@ def main():
         if args.fast or args.ultra_fast:
             # 使用优化版检测器
             print(f"\n🚀 使用优化版检测器（正文内容对比）...")
+            print(f"📏 序列长度: {args.sequence_length} 字符")
             optimized_detector = OptimizedSimilarSequenceDetector(
-                args.pdf1, args.pdf2, similarity_threshold, args.processes, max_sequences
+                args.pdf1, args.pdf2, similarity_threshold, args.processes, max_sequences, args.sequence_length
             )
 
             # 设置内容过滤配置
             if args.main_content_only:
                 # 使用增强版PDF提取器
-                enhanced_extractor1 = EnhancedPDFTextExtractor(content_config, args.pdf1)
-                enhanced_extractor2 = EnhancedPDFTextExtractor(content_config, args.pdf2)
+                enhanced_extractor1 = EnhancedPDFTextExtractor(content_config1, args.pdf1)
+                enhanced_extractor2 = EnhancedPDFTextExtractor(content_config2, args.pdf2)
 
                 # 替换检测器中的提取器
                 optimized_detector.extractor1 = enhanced_extractor1
@@ -322,7 +368,7 @@ def main():
         # 显示简要结果
         print("\n" + "=" * 80)
         print("检测完成!")
-        print(f"找到 {result_count} 个{result_type}的8字序列")
+        print(f"找到 {result_count} 个{result_type}的{args.sequence_length}字序列")
 
         if not args.no_save:
             print(f"详细结果已保存到: {output_file}")

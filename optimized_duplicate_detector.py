@@ -17,7 +17,7 @@ class OptimizedSimilarSequenceDetector:
     """优化版相似序列检测器"""
 
     def __init__(self, pdf1_path: str, pdf2_path: str, min_similarity: float = 0.75,
-                 num_processes: int = None, max_sequences: int = 10000):
+                 num_processes: int = None, max_sequences: int = 10000, sequence_length: int = 8):
         """
         初始化优化版相似序列检测器
 
@@ -27,19 +27,25 @@ class OptimizedSimilarSequenceDetector:
             min_similarity: 最小相似度阈值 (0-1)
             num_processes: 进程数（None=自动检测）
             max_sequences: 每个文件的最大序列数（限制以提高速度）
+            sequence_length: 序列长度（默认8）
         """
         self.pdf1_path = pdf1_path
         self.pdf2_path = pdf2_path
         self.min_similarity = min_similarity
         self.max_sequences = max_sequences
+        self.sequence_length = sequence_length
 
         # 初始化为标准提取器（后续可以替换为增强版）
         self.extractor1 = PDFTextExtractor(pdf1_path)
         self.extractor2 = PDFTextExtractor(pdf2_path)
 
         self.processor = TextProcessor()
-        self.generator = OptimizedSequenceGenerator(min_similarity, num_processes)
+        self.generator = OptimizedSequenceGenerator(min_similarity, sequence_length, num_processes)
         self.calculator = FastSimilarityCalculator(min_similarity)
+
+        # 用于保存原始字符数据（用于显示上下文）
+        self.chars1 = None
+        self.chars2 = None
 
     def process_pdf_with_limit(self, extractor, pdf_name: str) -> Tuple[List[CharInfo], List[SequenceInfo]]:
         """
@@ -81,7 +87,7 @@ class OptimizedSimilarSequenceDetector:
         print(f"   生成了 {len(chars):,} 个字符，耗时 {time.time() - start_time:.2f} 秒")
 
         # 3. 生成序列
-        print("3. 生成8字序列...")
+        print(f"3. 生成{self.sequence_length}字序列...")
         start_time = time.time()
         sequences = self.generator.generate_sequences(chars)
 
@@ -112,6 +118,10 @@ class OptimizedSimilarSequenceDetector:
         # 处理两个文件
         chars1, sequences1 = self.process_pdf_with_limit(self.extractor1, "文件1")
         chars2, sequences2 = self.process_pdf_with_limit(self.extractor2, "文件2")
+
+        # 保存chars用于显示上下文
+        self.chars1 = chars1
+        self.chars2 = chars2
 
         # 预估计算量
         total_comparisons = len(sequences1) * len(sequences2)
@@ -152,6 +162,36 @@ class OptimizedSimilarSequenceDetector:
 
         return similar_sequences
 
+    def get_context(self, sequence: SequenceInfo, chars: List[CharInfo],
+                    context_length: int = 50) -> str:
+        """
+        获取序列的上下文（前后各context_length个字符）
+
+        Args:
+            sequence: 序列信息
+            chars: 完整的字符列表
+            context_length: 上下文长度
+
+        Returns:
+            str: 格式化的上下文字符串
+        """
+        start_idx = sequence.start_index
+
+        # 获取前文
+        before_start = max(0, start_idx - context_length)
+        before_chars = chars[before_start:start_idx]
+        before_text = ''.join([c.char for c in before_chars])
+
+        # 获取匹配序列
+        match_text = sequence.sequence
+
+        # 获取后文
+        after_end = min(len(chars), start_idx + len(sequence.chars) + context_length)
+        after_chars = chars[start_idx + len(sequence.chars):after_end]
+        after_text = ''.join([c.char for c in after_chars])
+
+        return f"...{before_text}[{match_text}]{after_text}..."
+
     def format_output_optimized(self, similar_sequences: List[SimilarSequenceInfo],
                                show_all_positions: bool = True,
                                max_results: Optional[int] = None) -> str:
@@ -179,7 +219,7 @@ class OptimizedSimilarSequenceDetector:
         output.append("")
 
         if not similar_sequences:
-            output.append(f"未发现相似度≥{self.min_similarity:.2f}的8字序列。")
+            output.append(f"未发现相似度≥{self.min_similarity:.2f}的{self.sequence_length}字序列。")
             return "\n".join(output)
 
         # 限制显示结果数量
@@ -203,12 +243,24 @@ class OptimizedSimilarSequenceDetector:
 
         for i, sim_seq in enumerate(display_sequences, 1):
             output.append(f"{i}. 相似度: {sim_seq.similarity:.3f}")
-            output.append(f"   文件1: '{sim_seq.sequence1.sequence}'")
-            output.append(f"          位置: 页{sim_seq.sequence1.start_char.page}行{sim_seq.sequence1.start_char.line} - "
-                        f"页{sim_seq.sequence1.end_char.page}行{sim_seq.sequence1.end_char.line}")
-            output.append(f"   文件2: '{sim_seq.sequence2.sequence}'")
-            output.append(f"          位置: 页{sim_seq.sequence2.start_char.page}行{sim_seq.sequence2.start_char.line} - "
-                        f"页{sim_seq.sequence2.end_char.page}行{sim_seq.sequence2.end_char.line}")
+
+            # 文件1的上下文
+            if self.chars1:
+                context1 = self.get_context(sim_seq.sequence1, self.chars1, 50)
+                output.append(f"   文件1 (页{sim_seq.sequence1.start_char.page}行{sim_seq.sequence1.start_char.line}):")
+                output.append(f"      {context1}")
+            else:
+                output.append(f"   文件1: '{sim_seq.sequence1.sequence}'")
+                output.append(f"          位置: 页{sim_seq.sequence1.start_char.page}行{sim_seq.sequence1.start_char.line}")
+
+            # 文件2的上下文
+            if self.chars2:
+                context2 = self.get_context(sim_seq.sequence2, self.chars2, 50)
+                output.append(f"   文件2 (页{sim_seq.sequence2.start_char.page}行{sim_seq.sequence2.start_char.line}):")
+                output.append(f"      {context2}")
+            else:
+                output.append(f"   文件2: '{sim_seq.sequence2.sequence}'")
+                output.append(f"          位置: 页{sim_seq.sequence2.start_char.page}行{sim_seq.sequence2.start_char.line}")
 
             # 显示差异
             if sim_seq.differences and sim_seq.differences != ["完全相同"]:

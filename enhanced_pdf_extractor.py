@@ -24,6 +24,7 @@ class TextExtractionConfig:
     include_annotations: bool = False        # 是否包含批注
     min_line_length: int = 10                 # 最小行长度（过滤短行）
     remove_duplicate_lines: bool = True       # 是否去除重复行
+    page_range: Tuple[int, int] = None       # 页码范围 (start, end)，例如 (1, 146) 表示只提取1-146页
 
 
 class EnhancedPDFTextExtractor:
@@ -48,6 +49,26 @@ class EnhancedPDFTextExtractor:
             r'^References$',                # References
             r'^参考文献$',                   # 参考文献
             r'^Bibliography$',              # Bibliography
+        ]
+
+        # 中文脚注/引用模式 - 增强检测
+        self.footnote_patterns = [
+            r'参见.*第\d+页',               # 参见...第XX页
+            r'详见.*第\d+页',               # 详见...第XX页
+            r'出版社.*年版第\d+页',        # 出版社...年版第XX页
+            r'人民出版社.*年版',           # 人民出版社...年版
+            r'中央文献出版社.*年版',       # 中央文献出版社...年版
+            r'文献出版社.*年版',           # 文献出版社...年版
+            r'学习出版社.*年版',           # 学习出版社...年版
+            r'第\d+卷.*第\d+页',            # 第X卷...第X页
+            r'Vol\.\d+.*No\.\d+',          # Vol.X No.X
+            r'pp\.\d+',                     # pp.XXX
+            r'\d{4}年.*版',                 # 20XX年...版
+            r'年版.*第\d+页',               # 年版...第XX页
+            r'\[\d+\].*页',                 # [X]...页
+            r'ISBN',                        # ISBN
+            r'ISSN',                        # ISSN
+            r'DOI:',                        # DOI:
         ]
 
         self.citation_patterns = [
@@ -95,6 +116,13 @@ class EnhancedPDFTextExtractor:
                 return True
         return False
 
+    def is_footnote_line(self, text: str) -> bool:
+        """判断是否为脚注/参考文献行"""
+        for pattern in self.footnote_patterns:
+            if re.search(pattern, text):
+                return True
+        return False
+
     def is_short_or_empty(self, text: str) -> bool:
         """判断是否为短行或空行"""
         text_stripped = text.strip()
@@ -123,12 +151,33 @@ class EnhancedPDFTextExtractor:
         main_text_lines = []
 
         try:
+            import os
+            pdf_name = os.path.basename(pdf_path)
+            print(f"\n{'='*60}")
+            print(f"[PDF] ===== STARTING EXTRACTION: {pdf_name} =====")
+            print(f"{'='*60}")
+
             with pdfplumber.open(pdf_path) as pdf:
+                total_pages = len(pdf.pages)
+
+                # 应用页码范围限制
+                page_start, page_end = 1, total_pages
+                if self.config.page_range:
+                    page_start, page_end = self.config.page_range
+                    page_end = min(page_end, total_pages)
+                    print(f"[PDF] {pdf_name} - Page range: {page_start}-{page_end} (total: {total_pages} pages)")
+                else:
+                    print(f"[PDF] {pdf_name} - Total pages: {total_pages}")
+
                 for page_num, page in enumerate(pdf.pages, 1):
+                    # 跳过范围外的页面
+                    if page_num < page_start or page_num > page_end:
+                        continue
                     try:
                         # 提取当前页的文本
                         page_text = page.extract_text()
                         if not page_text:
+                            print(f"[PDF] {pdf_name} - Page {page_num}/{total_pages}: EMPTY (skipped)")
                             continue
 
                         # 按行分割
@@ -152,8 +201,15 @@ class EnhancedPDFTextExtractor:
                                 main_text_lines.append((normalized_line, page_num, line_num))
 
                     except Exception as e:
-                        self.logger.warning(f"处理第{page_num}页时出错: {e}")
+                        print(f"[PDF] {pdf_name} - ERROR on page {page_num}/{total_pages}: {e}")
                         continue
+
+                    # 每50页报告一次进度
+                    if page_num % 50 == 0 or page_num == total_pages:
+                        print(f"[PDF] {pdf_name} - Processed {page_num}/{total_pages} pages, {len(main_text_lines)} lines extracted so far")
+
+            print(f"[PDF] {pdf_name} - COMPLETED: {total_pages} pages processed, {len(main_text_lines)} lines extracted (before dedup)")
+            print(f"{'='*60}\n")
 
             # 去除重复行
             if self.config.remove_duplicate_lines:
@@ -187,6 +243,10 @@ class EnhancedPDFTextExtractor:
         if not self.config.include_citations and self.is_citation_line(text):
             return True
 
+        # 检测脚注（默认不包含）
+        if not self.config.include_footnotes and self.is_footnote_line(text):
+            return True
+
         if not self.config.include_page_numbers and self.is_page_header_footer(text):
             return True
 
@@ -200,8 +260,14 @@ class EnhancedPDFTextExtractor:
 
     def is_likely_header_footer(self, text: str) -> bool:
         """判断是否可能是页眉页脚"""
-        # 常见的页眉页脚特征
-        if len(text) < 20:  # 通常较短
+        text_stripped = text.strip()
+
+        # Must be very short to be header/footer
+        if len(text_stripped) > 15:  # Increased from 20 to allow more content
+            return False
+
+        # Single number or very short line is likely header/footer
+        if len(text_stripped) <= 5:
             return True
 
         # 包含页码模式

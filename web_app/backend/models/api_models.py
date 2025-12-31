@@ -49,7 +49,8 @@ class ComparisonRequest(BaseModel):
     """PDF comparison request - accepts camelCase from frontend"""
     pdf1_path: str = Field(..., description="Path to the first PDF file", alias="pdf1Path")
     pdf2_path: str = Field(..., description="Path to the second PDF file", alias="pdf2Path")
-    similarity_threshold: float = Field(default=0.75, ge=0.0, le=1.0, description="Minimum similarity threshold (0.0-1.0)", alias="similarityThreshold")
+    similarity_threshold: float = Field(default=0.90, ge=0.0, le=1.0, description="Minimum similarity threshold (0.0-1.0)", alias="similarityThreshold")
+    sequence_length: int = Field(default=8, ge=4, le=20, description="Number of consecutive characters for similarity detection (4-20)", alias="sequenceLength")
     content_filter: ContentFilter = Field(default=ContentFilter.MAIN_CONTENT_ONLY, description="Content filtering option", alias="contentFilter")
     processing_mode: ProcessingMode = Field(default=ProcessingMode.FAST, description="Processing speed mode", alias="processingMode")
     max_sequences: int = Field(default=5000, ge=100, le=50000, description="Maximum sequences per file", alias="maxSequences")

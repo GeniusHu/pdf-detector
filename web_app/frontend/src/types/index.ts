@@ -18,6 +18,7 @@ export interface ComparisonRequest {
   pdf1Path: string;
   pdf2Path: string;
   similarityThreshold: number;
+  sequenceLength: number;
   contentFilter: ContentFilter;
   processingMode: ProcessingMode;
   maxSequences: number;
@@ -123,6 +124,7 @@ export interface ExportFile {
 
 export interface ProcessingOptions {
   similarityThreshold: number;
+  sequenceLength: number;
   contentFilter: ContentFilter;
   processingMode: ProcessingMode;
   maxSequences: number;

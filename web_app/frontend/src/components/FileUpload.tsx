@@ -195,7 +195,7 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
       {/* Upload Zone */}
       {canAddMore && (
         <motion.div
-          {...getRootProps()}
+          {...getRootProps() as any}
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.99 }}
           className={cn(

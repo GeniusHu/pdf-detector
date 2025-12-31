@@ -21,7 +21,6 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from optimized_duplicate_detector import OptimizedSimilarSequenceDetector
 from enhanced_pdf_extractor import EnhancedPDFTextExtractor, TextExtractionConfig
 from text_processor import TextProcessor
 from optimized_sequence_generator import OptimizedSequenceGenerator
@@ -45,8 +44,9 @@ class SimilarityService:
         self,
         pdf1_content: PDFContent,
         pdf2_content: PDFContent,
-        min_similarity: float = 0.75,
+        min_similarity: float = 0.90,
         max_sequences: int = 5000,
+        sequence_length: int = 8,
         processing_mode: ProcessingMode = ProcessingMode.FAST,
         context_chars: int = 100,
         task_id: Optional[str] = None,
@@ -60,6 +60,7 @@ class SimilarityService:
             pdf2_content: Second PDF content
             min_similarity: Minimum similarity threshold
             max_sequences: Maximum sequences per file
+            sequence_length: Number of consecutive characters for sequence generation
             processing_mode: Processing speed mode
             context_chars: Number of context characters
             task_id: Optional task ID for progress tracking
@@ -68,7 +69,7 @@ class SimilarityService:
         Returns:
             SimilarityResult: Complete similarity detection result
         """
-        self.logger.info(f"[SIM] Starting similarity detection")
+        self.logger.info(f"[SIM] Starting similarity detection with sequence_length={sequence_length}")
         start_time = time.time()
 
         try:
@@ -81,7 +82,7 @@ class SimilarityService:
             result = await asyncio.to_thread(
                 self._detect_similarity_sync,
                 pdf1_content, pdf2_content,
-                similarity_threshold, max_seqs, context_chars
+                similarity_threshold, max_seqs, sequence_length, context_chars
             )
 
             self.logger.info(f"[SIM] Detection completed: {len(result['similarSequences'])} sequences, {time.time() - start_time:.2f}s")
@@ -99,6 +100,7 @@ class SimilarityService:
         pdf2_content: PDFContent,
         similarity_threshold: float,
         max_sequences: int,
+        sequence_length: int,
         context_chars: int
     ) -> Dict[str, Any]:
         """Synchronous similarity detection - runs in thread pool"""
@@ -107,25 +109,29 @@ class SimilarityService:
 
         start_time = time.time()
 
-        # Create sequence generator
-        generator = OptimizedSequenceGenerator(similarity_threshold)
+        # Create sequence generator with sequence_length
+        generator = OptimizedSequenceGenerator(similarity_threshold, sequence_length)
 
         # Convert lines to CharInfo objects
         # pdf1_content.lines is List[Tuple[str, int, int]] = (text, page, line_number)
+        print(f"\n[CONVERSION] Converting lines to CharInfo...")
+        print(f"[CONVERSION] File 1: {len(pdf1_content.lines)} lines -> CharInfo...")
         chars1 = self._lines_to_char_info(pdf1_content.lines)
+        print(f"[CONVERSION] File 2: {len(pdf2_content.lines)} lines -> CharInfo...")
         chars2 = self._lines_to_char_info(pdf2_content.lines)
 
-        self.logger.info(f"[SIM] Converted to CharInfo: file1={len(chars1)}, file2={len(chars2)} chars")
+        print(f"[CONVERSION] File 1: {len(chars1)} chars | File 2: {len(chars2)} chars")
+        self.logger.info(f"[SIM] Converted to CharInfo: file1={len(chars1)} chars from {len(pdf1_content.lines)} lines, file2={len(chars2)} chars from {len(pdf2_content.lines)} lines")
 
         # Generate sequences from CharInfo objects
         sequences1 = generator.generate_sequences(chars1)
         sequences2 = generator.generate_sequences(chars2)
 
-        self.logger.info(f"[SIM] Generated sequences: file1={len(sequences1)}, file2={len(sequences2)}")
+        self.logger.info(f"[SIM] Generated sequences (length={sequence_length}): file1={len(sequences1)} sequences, file2={len(sequences2)} sequences")
 
-        # Limit sequences
-        sequences1 = sequences1[:max_sequences]
-        sequences2 = sequences2[:max_sequences]
+        # No limit on sequences - compare all
+        # sequences1 = sequences1[:max_sequences]
+        # sequences2 = sequences2[:max_sequences]
 
         # Convert to dictionary format for find_similar_sequences
         # Dict[str, List[SequenceInfo]] where key is sequence string
@@ -135,11 +141,27 @@ class SimilarityService:
         # Find similar sequences
         similar_sequences = generator.find_similar_sequences(sequences1_dict, sequences2_dict)
 
-        self.logger.info(f"[SIM] Found {len(similar_sequences)} similar sequences")
+        # Log page range of similar sequences
+        if similar_sequences:
+            pages1 = set(s.sequence1.start_char.page for s in similar_sequences)
+            pages2 = set(s.sequence2.start_char.page for s in similar_sequences)
+            print(f"\n{'='*60}")
+            print(f"[RESULT] Found {len(similar_sequences)} similar sequences")
+            print(f"[RESULT] File 1 similarities on pages: {sorted(pages1)}")
+            print(f"[RESULT] File 2 similarities on pages: {sorted(pages2)}")
+            print(f"{'='*60}\n")
+            self.logger.info(f"[SIM] Found {len(similar_sequences)} similar sequences")
+            self.logger.info(f"[SIM] Similarities in file1: pages {sorted(pages1)}")
+            self.logger.info(f"[SIM] Similarities in file2: pages {sorted(pages2)}")
+        else:
+            print(f"\n{'='*60}")
+            print(f"[RESULT] No similar sequences found!")
+            print(f"{'='*60}\n")
+            self.logger.info(f"[SIM] Found 0 similar sequences")
 
         # Convert similar sequences to our API model
         result_similar_sequences = []
-        for seq_info in similar_sequences[:100]:  # Limit to 100 for response size
+        for seq_info in similar_sequences:
             seq_dict = {
                 "sequence1": seq_info.sequence1.sequence,
                 "sequence2": seq_info.sequence2.sequence,
@@ -173,10 +195,28 @@ class SimilarityService:
             minSimilarity=min(s.similarity for s in similar_sequences) if similar_sequences else 0
         )
 
+        # Convert statistics to dict for proper serialization
+        if hasattr(similarity_stats, 'model_dump'):
+            similarity_stats_dict = similarity_stats.model_dump(by_alias=True)
+        elif hasattr(similarity_stats, 'dict'):
+            similarity_stats_dict = similarity_stats.dict(by_alias=True)
+        else:
+            similarity_stats_dict = similarity_stats
+
+        # Convert SimilarSequence objects to dicts for proper serialization
+        similar_sequences_dicts = []
+        for seq in result_similar_sequences:
+            if hasattr(seq, 'model_dump'):
+                similar_sequences_dicts.append(seq.model_dump(by_alias=True))
+            elif hasattr(seq, 'dict'):
+                similar_sequences_dicts.append(seq.dict(by_alias=True))
+            else:
+                similar_sequences_dicts.append(seq)
+
         # Determine processing mode string
         mode_str = "ultra_fast" if similarity_threshold >= 0.9 else ("fast" if similarity_threshold >= 0.8 else "standard")
 
-        # Create result
+        # Create result - use primitive types and dicts, not Pydantic objects
         result = {
             "taskId": "temp",
             "comparisonInfo": {
@@ -188,8 +228,8 @@ class SimilarityService:
             },
             "file1Stats": self._convert_stats_to_dict(pdf1_content.stats),
             "file2Stats": self._convert_stats_to_dict(pdf2_content.stats),
-            "similarityStats": similarity_stats,
-            "similarSequences": result_similar_sequences,
+            "similarityStats": similarity_stats_dict,
+            "similarSequences": similar_sequences_dicts,
             "processingTimeSeconds": time.time() - start_time,
             "exportFiles": {}
         }
@@ -204,17 +244,39 @@ class SimilarityService:
         char_position = 0
 
         for text, page, line_number in lines:
-            # Split text into words and create CharInfo for each
+            # For Chinese text, split by characters instead of spaces
+            # First try to split by spaces (for English), then handle Chinese
             words = text.split()
-            for word in words:
-                if word.strip():  # Skip empty words
-                    chars.append(CharInfo(
-                        char=word,
-                        page=page,
-                        line=line_number,
-                        position=char_position
-                    ))
-                    char_position += 1
+
+            if not words:
+                continue
+
+            # Check if this is mostly Chinese text (high ratio of non-ASCII)
+            total_chars = sum(len(word) for word in words)
+            chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+
+            if chinese_chars > total_chars * 0.3:  # If >30% Chinese, treat as Chinese text
+                # Split into individual characters for Chinese
+                for char in text:
+                    if char.strip():  # Skip whitespace
+                        chars.append(CharInfo(
+                            char=char,
+                            page=page,
+                            line=line_number,
+                            position=char_position
+                        ))
+                        char_position += 1
+            else:
+                # For English text, use word-based splitting
+                for word in words:
+                    if word.strip():
+                        chars.append(CharInfo(
+                            char=word,
+                            page=page,
+                            line=line_number,
+                            position=char_position
+                        ))
+                        char_position += 1
 
         return chars
 

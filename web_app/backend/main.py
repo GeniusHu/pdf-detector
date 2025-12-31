@@ -97,7 +97,12 @@ async def log_requests(request, call_next):
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "https://yourdomain.com"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://yourdomain.com",
+        "http://localhost:3000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -349,6 +354,7 @@ async def process_pdf_comparison(
             pdf2_content,
             min_similarity=request.similarity_threshold,
             max_sequences=request.max_sequences,
+            sequence_length=request.sequence_length,
             processing_mode=request.processing_mode
         )
 

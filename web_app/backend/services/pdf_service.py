@@ -73,7 +73,7 @@ class PDFService:
             # Run blocking PDF extraction in thread pool
             lines, stats = await asyncio.to_thread(self._extract_sync, pdf_path, config)
 
-            self.logger.info(f"[PDF] Extraction completed: {len(lines)} lines")
+            self.logger.info(f"[PDF] Extraction completed: {len(lines)} lines extracted from PDF")
 
             # Convert to our API model
             file_stats = self._convert_to_file_statistics(pdf_path, stats, time.time() - start_time)
@@ -156,7 +156,7 @@ class PDFService:
                 include_page_numbers=False,
                 include_headers_footers=False,
                 include_annotations=False,
-                min_line_length=10,
+                min_line_length=5,  # Reduced from 10 to capture more content
                 remove_duplicate_lines=True
             )
 

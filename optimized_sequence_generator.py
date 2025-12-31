@@ -99,29 +99,42 @@ class FastSimilarityCalculator:
 
 
 class OptimizedSequenceGenerator:
-    """优化版8字序列生成器"""
+    """优化版序列生成器，支持可变长度序列"""
 
-    def __init__(self, min_similarity: float = 0.75, num_processes: int = None):
+    def __init__(self, min_similarity: float = 0.75, sequence_length: int = 8, num_processes: int = None):
         """
         初始化优化版序列生成器
 
         Args:
             min_similarity: 最小相似度阈值
+            sequence_length: 连续字符序列长度（默认8）
             num_processes: 进程数（None=自动检测）
         """
         self.min_similarity = min_similarity
+        self.sequence_length = sequence_length
         self.num_processes = num_processes or min(8, mp.cpu_count())
         self.calculator = FastSimilarityCalculator(min_similarity)
 
     def generate_sequences(self, chars: List[CharInfo]) -> List[SequenceInfo]:
         """
-        从字符列表中生成所有连续的8字序列
+        从字符列表中生成所有连续的N字序列
+
+        Args:
+            chars: 字符信息列表
+
+        Returns:
+            序列信息列表
         """
         sequences = []
+        seq_len = self.sequence_length
 
-        for i in range(len(chars) - 7):  # -7 因为需要8个字符
-            # 取8个连续字符
-            seq_chars = chars[i:i+8]
+        # 需要至少 sequence_length 个字符才能生成序列
+        if len(chars) < seq_len:
+            return sequences
+
+        for i in range(len(chars) - seq_len + 1):
+            # 取 seq_len 个连续字符
+            seq_chars = chars[i:i+seq_len]
             sequence = " ".join([char.char for char in seq_chars])
 
             # 生成哈希签名用于快速筛选
@@ -132,7 +145,7 @@ class OptimizedSequenceGenerator:
                 sequence=sequence,
                 start_index=i,
                 start_char=seq_chars[0],
-                end_char=seq_chars[7],
+                end_char=seq_chars[-1],  # 使用最后一个字符
                 chars=seq_chars,
                 hash_signature=hash_signature
             )
@@ -242,7 +255,7 @@ class OptimizedSequenceGenerator:
 
         # 预筛选候选序列
         candidate_pairs = []
-        for seq1 in file1_sequences[:10000]:  # 限制文件1的序列数量以提高速度
+        for seq1 in file1_sequences:  # No limit - compare all sequences
             # 为seq1生成可能的哈希键
             words = seq1.sequence.split()
             candidate_hashes = set()
@@ -360,14 +373,13 @@ class OptimizedSequenceGenerator:
         for seq_list in file2_sequences.values():
             all_file2_seqs.extend(seq_list)
 
-        # 限制序列数量以提高速度
-        if len(all_file1_seqs) > 10000:
-            all_file1_seqs = all_file1_seqs[:10000]
-            print(f"文件1序列数量限制为 {len(all_file1_seqs):,}（原数量超过限制）")
-
-        if len(all_file2_seqs) > 10000:
-            all_file2_seqs = all_file2_seqs[:10000]
-            print(f"文件2序列数量限制为 {len(all_file2_seqs):,}（原数量超过限制）")
+        # No limit on sequences - compare all
+        # if len(all_file1_seqs) > 10000:
+        #     all_file1_seqs = all_file1_seqs[:10000]
+        #     print(f"文件1序列数量限制为 {len(all_file1_seqs):,}（原数量超过限制）")
+        # if len(all_file2_seqs) > 10000:
+        #     all_file2_seqs = all_file2_seqs[:10000]
+        #     print(f"文件2序列数量限制为 {len(all_file2_seqs):,}（原数量超过限制）")
 
         # 使用并行方法
         return self.find_similar_sequences_parallel(all_file1_seqs, all_file2_seqs)
