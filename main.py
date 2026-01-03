@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PDF相似序列检测主程序
-用于检测两个PDF文件中的相似序列
+文档相似序列检测主程序
+用于检测两个PDF/Word文档中的相似序列
+支持 .pdf 和 .docx 格式
 """
 
 import sys
@@ -15,49 +16,55 @@ from pathlib import Path
 from duplicate_detector import DuplicateDetector
 from optimized_duplicate_detector import OptimizedSimilarSequenceDetector, fast_similarity_detection
 from enhanced_pdf_extractor import EnhancedPDFTextExtractor, TextExtractionConfig, create_default_main_content_extractor
+from document_extractor import create_document_extractor
 
 
-def check_pdf_files(pdf1_path: str, pdf2_path: str) -> bool:
+def check_document_files(doc1_path: str, doc2_path: str) -> bool:
     """
-    检查PDF文件是否存在和可读
+    检查文档文件是否存在和可读
 
     Args:
-        pdf1_path: 第一个PDF文件路径
-        pdf2_path: 第二个PDF文件路径
+        doc1_path: 第一个文档文件路径
+        doc2_path: 第二个文档文件路径
 
     Returns:
         bool: 文件检查是否通过
     """
+    # 支持的文件类型
+    supported_extensions = ['.pdf', '.docx']
+
     # 检查文件1
-    if not os.path.exists(pdf1_path):
-        print(f"错误: 文件1不存在: {pdf1_path}")
+    if not os.path.exists(doc1_path):
+        print(f"错误: 文件1不存在: {doc1_path}")
         return False
 
-    if not os.path.isfile(pdf1_path):
-        print(f"错误: 文件1不是有效的文件: {pdf1_path}")
+    if not os.path.isfile(doc1_path):
+        print(f"错误: 文件1不是有效的文件: {doc1_path}")
         return False
 
-    if not pdf1_path.lower().endswith('.pdf'):
-        print(f"警告: 文件1可能不是PDF文件: {pdf1_path}")
+    ext1 = os.path.splitext(doc1_path)[1].lower()
+    if ext1 not in supported_extensions:
+        print(f"警告: 文件1类型可能不支持: {ext1}")
 
     # 检查文件2
-    if not os.path.exists(pdf2_path):
-        print(f"错误: 文件2不存在: {pdf2_path}")
+    if not os.path.exists(doc2_path):
+        print(f"错误: 文件2不存在: {doc2_path}")
         return False
 
-    if not os.path.isfile(pdf2_path):
-        print(f"错误: 文件2不是有效的文件: {pdf2_path}")
+    if not os.path.isfile(doc2_path):
+        print(f"错误: 文件2不是有效的文件: {doc2_path}")
         return False
 
-    if not pdf2_path.lower().endswith('.pdf'):
-        print(f"警告: 文件2可能不是PDF文件: {pdf2_path}")
+    ext2 = os.path.splitext(doc2_path)[1].lower()
+    if ext2 not in supported_extensions:
+        print(f"警告: 文件2类型可能不支持: {ext2}")
 
     # 检查文件大小
-    size1 = os.path.getsize(pdf1_path)
-    size2 = os.path.getsize(pdf2_path)
+    size1 = os.path.getsize(doc1_path)
+    size2 = os.path.getsize(doc2_path)
 
-    print(f"文件1: {pdf1_path} ({size1 / 1024 / 1024:.1f} MB)")
-    print(f"文件2: {pdf2_path} ({size2 / 1024 / 1024:.1f} MB)")
+    print(f"文件1: {doc1_path} ({size1 / 1024 / 1024:.1f} MB)")
+    print(f"文件2: {doc2_path} ({size2 / 1024 / 1024:.1f} MB)")
 
     if size1 == 0 or size2 == 0:
         print("错误: 其中一个文件为空")
@@ -274,7 +281,7 @@ def main():
     print("=" * 80)
 
     # 检查文件
-    if not check_pdf_files(args.pdf1, args.pdf2):
+    if not check_document_files(args.pdf1, args.pdf2):
         print("\n文件检查失败，请检查文件路径")
         sys.exit(1)
 
@@ -288,16 +295,21 @@ def main():
                 args.pdf1, args.pdf2, similarity_threshold, args.processes, max_sequences, args.sequence_length
             )
 
-            # 设置内容过滤配置
-            if args.main_content_only:
-                # 使用增强版PDF提取器
-                enhanced_extractor1 = EnhancedPDFTextExtractor(content_config1, args.pdf1)
-                enhanced_extractor2 = EnhancedPDFTextExtractor(content_config2, args.pdf2)
+            # 根据文件类型创建提取器
+            print(f"📄 文件类型检测...")
+            extractor1 = create_document_extractor(args.pdf1, content_config1)
+            extractor2 = create_document_extractor(args.pdf2, content_config2)
 
-                # 替换检测器中的提取器
-                optimized_detector.extractor1 = enhanced_extractor1
-                optimized_detector.extractor2 = enhanced_extractor2
-                print("✅ 已启用正文内容过滤")
+            # 显示文件类型
+            file1_type = "PDF" if args.pdf1.lower().endswith('.pdf') else "Word"
+            file2_type = "PDF" if args.pdf2.lower().endswith('.pdf') else "Word"
+            print(f"   文件1: {file1_type}")
+            print(f"   文件2: {file2_type}")
+
+            # 替换检测器中的提取器
+            optimized_detector.extractor1 = extractor1
+            optimized_detector.extractor2 = extractor2
+            print("✅ 已启用正文内容过滤")
 
             print(f"📝 内容提取配置:")
             print(f"   参考文献: {'包含' if content_config.include_references else '过滤'}")

@@ -234,14 +234,14 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
             Progress
           </span>
           <span className="text-sm text-secondary-600">
-            {task.progress.toFixed(1)}%
+            {(task.progress * 100).toFixed(1)}%
           </span>
         </div>
         <div className="relative w-full h-3 bg-secondary-100 rounded-full overflow-hidden">
           <motion.div
             className="h-full bg-gradient-to-r from-primary-500 to-primary-600 rounded-full relative"
             initial={{ width: '0%' }}
-            animate={{ width: `${task.progress}%` }}
+            animate={{ width: `${task.progress * 100}%` }}
             transition={{ duration: 0.5, ease: 'easeOut' }}
           >
             {task.status === 'processing' && (
