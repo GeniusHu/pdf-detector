@@ -95,8 +95,8 @@ class SimilarityDetectionStage(PipelineStage):
         try:
             # ========== 执行相似度检测 ==========
             similarity_result = await self.similarity_service.detect_similarity(
-                context.doc1_paragraphs,
-                context.doc2_paragraphs,
+                context.doc1_content,  # 传递完整的文档内容对象
+                context.doc2_content,  # 传递完整的文档内容对象
                 min_similarity=min_similarity,
                 max_sequences=max_sequences,
                 sequence_length=sequence_length,

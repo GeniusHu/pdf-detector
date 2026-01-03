@@ -71,6 +71,8 @@ class PipelineContext:
         doc2_raw_content: 文档2原始内容列表
 
         # === 文档结构化数据 ===
+        doc1_content: 文档1完整内容对象 (DocumentContent)
+        doc2_content: 文档2完整内容对象 (DocumentContent)
         doc1_paragraphs: 文档1处理后的段落列表
         doc2_paragraphs: 文档2处理后的段落列表
 
@@ -110,6 +112,8 @@ class PipelineContext:
     doc2_raw_content: Optional[List[tuple]] = None
 
     # === 文档结构化数据 ===
+    doc1_content: Optional[Any] = None  # 完整的文档内容对象
+    doc2_content: Optional[Any] = None  # 完整的文档内容对象
     doc1_paragraphs: Optional[List] = None
     doc2_paragraphs: Optional[List] = None
 

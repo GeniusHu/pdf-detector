@@ -74,6 +74,8 @@ class ExtractionStage(PipelineStage):
                 task_id=context.task_id
             )
 
+            # 存储完整的文档内容对象（用于后续阶段）
+            context.doc1_content = doc1_content
             context.doc1_paragraphs = doc1_content.paragraphs
             context.doc1_raw_content = doc1_content.lines
 
@@ -98,6 +100,8 @@ class ExtractionStage(PipelineStage):
                 task_id=context.task_id
             )
 
+            # 存储完整的文档内容对象（用于后续阶段）
+            context.doc2_content = doc2_content
             context.doc2_paragraphs = doc2_content.paragraphs
             context.doc2_raw_content = doc2_content.lines
 
